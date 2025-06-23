@@ -23,7 +23,7 @@ class TSensors:
                 rospy.logerr(f"Failed to connect to /dev/ttyACM{port_id}: {e}")
                 raise
 
-            topic_name = f'/tsensors/sensor_{idx + 1}'
+            topic_name = f'/tsensors/sensor{idx + 1}'
             self.publishers.append(rospy.Publisher(topic_name, WrenchStamped, queue_size=1))
 
         self.pub_rate = rospy.Rate(rate)
@@ -48,7 +48,7 @@ class TSensors:
         msg = WrenchStamped()
         msg.header.seq = seq
         msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = f'sensor_{sensor_id}'
+        msg.header.frame_id = f'sensor{sensor_id}'
 
         try:
             msg.wrench.force.x = (int(data_str[4:8], 16) - self.offset) * 0.01
