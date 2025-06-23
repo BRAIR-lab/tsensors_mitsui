@@ -1,87 +1,91 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 import rospy
 import serial
-import numpy as np
 import json
 from geometry_msgs.msg import WrenchStamped
 
-class tsensors:
-    def __init__(self,id_ports,rate):
-
-        self.num_of_sensors = np.shape(id_ports)[0]
-        ports = np.empty(self.num_of_sensors,object)
-        self.ser = np.empty(self.num_of_sensors,object)
-        for p in range(self.num_of_sensors):
-            port_name = '/dev/ttyACM' + str(id_ports[p])
-            self.ser[p] = serial.Serial(port_name)
-            self.ser[p].baudrate = 230400
-            self.ser[p].write(bytes("020501", 'utf-8'))  #Reset offset
-            self.ser[p].write(bytes("020202", 'utf-8'))  #Start sending
-
+class TSensors:
+    def __init__(self, id_ports, rate):
         self.offset = 2048
+        self.num_sensors = len(id_ports)
+        self.ser_ports = []
+        self.publishers = []
 
-        #ROS publisher
-        self.tsensor_pubs = np.empty(self.num_of_sensors,object)
-        for p in range(self.num_of_sensors):
-            tpcname_pub = '/tsensors/sensor_' + str(p+1)
-            self.tsensor_pubs[p] = rospy.Publisher(tpcname_pub, WrenchStamped, queue_size=1)
+        for idx, port_id in enumerate(id_ports):
+            try:
+                port = serial.Serial(f'/dev/ttyACM{port_id}', baudrate=230400)
+                port.write(b"020501")  # Reset offset
+                port.write(b"020202")  # Start sending
+                self.ser_ports.append(port)
+                rospy.loginfo(f"Initialized sensor on /dev/ttyACM{port_id}")
+            except serial.SerialException as e:
+                rospy.logerr(f"Failed to connect to /dev/ttyACM{port_id}: {e}")
+                raise
+
+            topic_name = f'/tsensors/sensor_{idx + 1}'
+            self.publishers.append(rospy.Publisher(topic_name, WrenchStamped, queue_size=1))
 
         self.pub_rate = rospy.Rate(rate)
-        self.publish()
+        self.publish_loop()
 
-    def publish(self):
-        sensor_data = np.empty(self.num_of_sensors,object)
-        for p in range(self.num_of_sensors):
-            sensor_data[p] = WrenchStamped()
-            sensor_data[p].header.seq = 0
-            sensor_data[p].header.frame_id = 'sensor_' + str(p+1)
-
+    def publish_loop(self):
         rospy.loginfo("Publishing Sensor Data...")
+        seq_counters = [0] * self.num_sensors
+
         while not rospy.is_shutdown():
-
-            for p in range(self.num_of_sensors):
-                input_str = self.ser[p].readline().decode("utf-8")
-
-                sensor_data[p].header.seq += 1
-                sensor_data[p].header.stamp = rospy.Time.now()
-
-                sensor_data[p].wrench.force.x = (int(input_str[4:8], 16)-self.offset)*0.01
-                sensor_data[p].wrench.force.y = (int(input_str[8:12], 16)-self.offset)*0.01
-                sensor_data[p].wrench.force.z = (int(input_str[12:16], 16)-self.offset)*0.02
-                sensor_data[p].wrench.torque.x = (int(input_str[16:20], 16)-self.offset)*0.05
-                sensor_data[p].wrench.torque.y = (int(input_str[20:24], 16)-self.offset)*0.05
-                sensor_data[p].wrench.torque.z = (int(input_str[24:28], 16)-self.offset)*0.05
- 
-                self.tsensor_pubs[p].publish(sensor_data[p])
-
+            for idx, ser in enumerate(self.ser_ports):
+                try:
+                    line = ser.readline().decode("utf-8")
+                    msg = self.parse_sensor_data(line, idx + 1, seq_counters[idx])
+                    self.publishers[idx].publish(msg)
+                    seq_counters[idx] += 1
+                except Exception as e:
+                    rospy.logwarn(f"Error parsing sensor {idx + 1}: {e}")
             self.pub_rate.sleep()
 
+    def parse_sensor_data(self, data_str, sensor_id, seq):
+        msg = WrenchStamped()
+        msg.header.seq = seq
+        msg.header.stamp = rospy.Time.now()
+        msg.header.frame_id = f'sensor_{sensor_id}'
+
+        try:
+            msg.wrench.force.x = (int(data_str[4:8], 16) - self.offset) * 0.01
+            msg.wrench.force.y = (int(data_str[8:12], 16) - self.offset) * 0.01
+            msg.wrench.force.z = (int(data_str[12:16], 16) - self.offset) * 0.02
+            msg.wrench.torque.x = (int(data_str[16:20], 16) - self.offset) * 0.05
+            msg.wrench.torque.y = (int(data_str[20:24], 16) - self.offset) * 0.05
+            msg.wrench.torque.z = (int(data_str[24:28], 16) - self.offset) * 0.05
+        except (ValueError, IndexError) as e:
+            raise ValueError(f"Failed to parse sensor data: '{data_str.strip()}'. Error: {e}")
+        
+        return msg
+
     def turn_off(self):
+        for ser in self.ser_ports:
+            try:
+                ser.write(b"020200")
+            except Exception as e:
+                rospy.logwarn(f"Failed to send turn off command: {e}")
 
-        for p in range(self.num_of_sensors):
-            self.ser[p].write(bytes("020200", 'utf-8'))
-
-def tsensors_py():
-    # Starts a new node
+def main():
     rospy.init_node('tactile_sensors_node', anonymous=True)
-
-    # Debug
     rospy.loginfo("********* TSensor Node Interface ***********")
 
-    id_ports = json.loads(rospy.get_param("~id_ports"))
-    rate = rospy.get_param("mitsui_rate")
-    
-    #Create _ros_template_ object
-    rospy.loginfo("Create tsensor object.")
-    _tsensors_ = tsensors(id_ports,rate)
-    
-    #Handle shutdown
-    rospy.on_shutdown(_tsensors_.turn_off)
-    rospy.spin()
+    try:
+        id_ports = json.loads(rospy.get_param("~id_ports"))
+        rate = rospy.get_param("mitsui_rate")
+    except KeyError as e:
+        rospy.logerr(f"Missing parameter: {e}")
+        return
+
+    try:
+        sensor_node = TSensors(id_ports, rate)
+        rospy.on_shutdown(sensor_node.turn_off)
+        rospy.spin()
+    except Exception as e:
+        rospy.logfatal(f"TSensors initialization failed: {e}")
 
 if __name__ == '__main__':
-    try:
-        tsensors_py()
-    except rospy.ROSInterruptException:
-        pass
+    main()
