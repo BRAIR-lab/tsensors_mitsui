@@ -4,7 +4,7 @@
 
   <!-- Reading Node -->
   <node name="tsensors_read" pkg="tsensors_mitsui" type="tsensors_read.py" output="screen" cwd="node" >
-    <param name="id_ports" value="[0]"/>
+    <param name="id_ports" value="[0,1,2,3]"/> 
   </node>
 
 </launch>
