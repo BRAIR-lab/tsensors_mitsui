@@ -1,3 +1,0 @@
-std_msgs/UInt64 msg_1
----
-geometry_msgs/PoseStamped msg_2

@@ -4,7 +4,9 @@
   <version>0.0.0</version>
   <description>The tsensors_mitsui package</description>
 
-  <maintainer email="oikonpar@mail.ntua.gr">paris-oikonomou</maintainer>
+  <!-- <maintainer email="oikonpar@mail.ntua.gr">paris-oikonomou</maintainer> -->
+  <!-- My version -->
+  <maintainer email="daniele.caradonna@santannapisa.it">Elektron97</maintainer>
 
   <license>TODO</license>
 

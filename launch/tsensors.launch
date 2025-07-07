@@ -1,13 +1,10 @@
 <launch>
+  <!-- Publishing Frequency -->
+  <param name="mitsui_rate" value="100"/>
 
-   <!--rosparam file="$(find ros_template_pkg)/yaml/params.yaml" command="load" /-->
-
-   <param name="mitsui_rate" value="100"/>
-   <!--<param name="mitsui_rate" value="60"/>-->
-
-   <!--node name="kinematics" pkg="robo2_redundant" type="kinematics.py" output="screen" /-->
-   <node name="tsensors_read" pkg="tsensors_mitsui" type="tsensors_read.py" output="screen" cwd="node" >
-     <param name="id_ports" value="[0]"/>
-   </node>
+  <!-- Reading Node -->
+  <node name="tsensors_read" pkg="tsensors_mitsui" type="tsensors_read.py" output="screen" cwd="node" >
+    <param name="id_ports" value="[0,1,2,3]"/> 
+  </node>
 
 </launch>
